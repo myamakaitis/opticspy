@@ -33,16 +33,18 @@ def hex2rgb(hex_str):
 
 class Ray:
     def __init__(self, theta, r, n_current = 1, color = '#FFFFFF'):
-        self.t = theta
-        self.r = r
+        #self.t = theta
+        #self.r = r
         self.n = n_current
+        self.stopped = False #has to be done before self.rt
 
-        self.rt = np.array([self.r, self.t])
+        self.rt = np.array([r, theta])
         
         self.dx, self.dy = np.cos(theta), np.sin(theta)
         self.slope = np.array([self.dx, self.dy])
 
         self.color = color
+
 
     def get_rgb(self):
         return hex2rgb(self.color)
@@ -63,6 +65,9 @@ class Path(Ray):
 
     @rt.setter
     def rt(self, value):
+        if self.stopped:
+            return
+
         self._rt = value
         self.tstates.append(self._rt[1])
         P = np.array([self._rt[0], self.z])
@@ -89,7 +94,7 @@ class ThinLens:
                           dtype = np.float64)
         self.d = diameter
 
-        self.z = None
+        self.z = loc
 
 
     def __matmul__(self, ray):
@@ -118,9 +123,22 @@ class Distance:
 
 
 class Stop:
-    def __init__(self, diameter):
-        self.d = diameter
-        self.r = diameter / 2
+    def __init__(self, r_max, r_min = None, loc = None):
+        self.r_max = r_max
+        if r_min is None:
+            self.r_min = -self.r_max
+        else:
+            self.r_min = r_min
+
+        self.z = loc
+
+    def __matmul__(self, ray):
+        r = ray.rt[0]
+        if r > self.r_max or r <  self.r_min:
+            ray.stopped = True
+        else:
+            pass
+
 
 
 
@@ -201,7 +219,30 @@ class CollimatedSource:
 
 
     
-#class PointSource:
+class PointSource:
+    def __init__(self, z, r, theta_max, theta_min = None, num = 51, n_ior = 1,
+                 color = '#FF0000'):
+        self.z = z
+        self.r = r
+        self.t_max = theta_max
+        if theta_min is None:
+            self.t_min = -theta_max
+        else:
+            self.t_min = theta_min
+        self.num = num
+        self.n_ior = n_ior
+        self.color = color
+
+        self.t_array = np.linspace(self.t_min, self.t_max, self.num)
+        self.bundle = []
+        for ii, t in enumerate(self.t_array):
+            self.bundle.append(Path(t, self.r, z=self.z, n_current=self.n_ior, color=self.color))
+
+    def __getitem__(self, item):
+        return self.bundle[item]
+
+    def __len__(self):
+        return self.num
 
 
 if __name__ == '__main__':
@@ -212,12 +253,14 @@ if __name__ == '__main__':
     Lens2 = ThinLens(50)
 
     ColLight = CollimatedSource(.5)
+    PointLight = PointSource(-100, 0, .005)
 
     fig,ax = pyp.subplots()
 
     f_obj = 100
     f_rl  = 50
 
+    fig, ax = pyp.subplots()
     for ii in range(len(ColLight)):
         Distance(f_obj) @ ColLight[ii]
         ThinLens(f_obj) @ ColLight[ii]
@@ -228,5 +271,19 @@ if __name__ == '__main__':
         Distance(f_rl) @ ColLight[ii]
 
         ColLight[ii].plot(ax)
+    fig.show()
 
+    fig, ax = pyp.subplots()
+    for ii in range(len(PointLight)):
+        Distance(f_obj) @ PointLight[ii]
+        ThinLens(f_obj) @ PointLight[ii]
+        Distance(f_obj) @ PointLight[ii]
+        Stop(.2) @ PointLight[ii]
+        Distance(f_rl) @ PointLight[ii]
+        ThinLens(f_rl)  @ PointLight[ii]
+        Distance(2 * f_rl) @ PointLight[ii]
+        ThinLens(f_rl) @ PointLight[ii]
+        Distance(f_rl) @ PointLight[ii]
+
+        PointLight[ii].plot(ax, {'alpha':.5})
     fig.show()
