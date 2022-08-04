@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as pyp
+from matplotlib import cm
 
 
 def rgb2hex(rgb):
@@ -13,6 +14,8 @@ def rgb2hex(rgb):
         raise ValueError("RBG Array wrong size")
     elif max(rgb) > 255:
         raise ValueError("Maximum RBG value is 255")
+    elif np.mean(rgb) < 1:
+        rgb = [255*v for v in rgb]
 
     return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
 
@@ -46,12 +49,13 @@ class Ray:
 
 
 class Path(Ray):
-    def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#FFFFFF'):
-        super().__init__(theta, r, n_current = n_current, color = color)
-
-        self.z = z
+    def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#000000'):
         self.Pstates = []
         self.tstates = []
+        self.z = z
+        super().__init__(theta, r, n_current=n_current, color=color)
+
+
 
     @property
     def rt(self):
@@ -59,10 +63,17 @@ class Path(Ray):
 
     @rt.setter
     def rt(self, value):
-        self.rt = value
-        self.tstates.append(self.rt[1])
-        P = np.array(self.r, self.z)
+        self._rt = value
+        self.tstates.append(self._rt[1])
+        P = np.array([self._rt[0], self.z])
         self.Pstates.append(P)
+
+    def plot(self, ax, plot_kwargs = {}):
+        Parray = np.array(self.Pstates).T
+        r = Parray[0]
+        z = Parray[1]
+
+        ax.plot(z,r, color = self.color, **plot_kwargs)
 
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
@@ -74,7 +85,7 @@ class ThinLens:
     def __init__(self, focal_length, diameter = np.inf, loc = None):
         self.f = focal_length
         self.R = np.array([[1,  0],
-                           [1, -1/self.f]],
+                           [-1/self.f, 1]],
                           dtype = np.float64)
         self.d = diameter
 
@@ -101,6 +112,8 @@ class Distance:
                           , dtype = np.float64)
 
     def __matmul__(self, ray):
+        if hasattr(ray, 'z'):
+            ray.z += self.dz
         ray.rt = self.T @ ray.rt
 
 
@@ -118,6 +131,7 @@ class Image:
 
 
     def Make(self, rays, sampling = 2.0):
+        """Creates an image using a sample of rays using their color and """
 
         n_rays = len(rays)
         img_size = int(n_rays / sampling)
@@ -126,11 +140,11 @@ class Image:
 
         self.img = np.zeros((img_size, 3), dtype = np.float64)
 
-        r_max = np.max([np.abs(ray.r) for ray in rays])
+        self.r_max = np.max([np.abs(ray.r) for ray in rays])
 
         #for better results could blur each ray using a kernel
         for ray in rays:
-            pos_frac = ray.r / r_max
+            pos_frac = ray.r / self.r_max
 
             img_index = int(.5*(1 - pos_frac)*img_size)
 
@@ -149,8 +163,70 @@ class Image:
         if show:
             fig.show()
 
-    #class CollimatedSource:
+class CollimatedSource:
+    def __init__(self, r_max, r_min = None, num = 51, zstart = -100, theta = 0, n_ior = 1,
+                 cmap = 'viridis'):
+        """
+        :param r_max: maximum height of collimated source
+        :param r_min: minimum height of collimated source
+                      if not given the opposite of r_max is used
+        :param num:   number of discrete paths to use
+        :param zstart: axial position of source, default = -100
+        :param theta:  angle in radians of the light source
+        :param n_ior: starting index of refraction
+        """
+        self.z = zstart
+        self.n_ior = n_ior
+        self.num = num
+        self.t = theta
+        self.r_max = r_max
+        if r_min is None:
+            self.r_min = -r_max
+        else:
+            self.r_min = r_min
+
+        self.r_array = np.linspace(self.r_min, self.r_max, self.num)
+        self.bundle = []
+        self.cmap = cm.get_cmap(cmap,8)
+        for ii, r in enumerate(self.r_array):
+
+            c_hex = rgb2hex(self.cmap(ii / self.num)[:-1])
+            self.bundle.append(Path(self.t, r, z = self.z, n_current=self.n_ior, color= c_hex))
+
+    def __getitem__(self, item):
+        return self.bundle[item]
+
+    def __len__(self):
+        return self.num
+
+
     
 #class PointSource:
 
 
+if __name__ == '__main__':
+
+    Lens1 = ThinLens(100)
+    Dist100 = Distance(100)
+    Dist150 = Distance(150)
+    Lens2 = ThinLens(50)
+
+    ColLight = CollimatedSource(.5)
+
+    fig,ax = pyp.subplots()
+
+    f_obj = 100
+    f_rl  = 50
+
+    for ii in range(len(ColLight)):
+        Distance(f_obj) @ ColLight[ii]
+        ThinLens(f_obj) @ ColLight[ii]
+        Distance(f_obj + f_rl) @ ColLight[ii]
+        ThinLens(f_rl)  @ ColLight[ii]
+        Distance(2 * f_rl) @ ColLight[ii]
+        ThinLens(f_rl) @ ColLight[ii]
+        Distance(f_rl) @ ColLight[ii]
+
+        ColLight[ii].plot(ax)
+
+    fig.show()
