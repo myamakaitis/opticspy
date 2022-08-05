@@ -101,6 +101,31 @@ class ThinLens:
         ray.rt = self.R @ ray.rt
 
 
+
+class ThinLensMLA:
+    def __init__(self, focal_length, pitch, diameter = np.inf, loc = None):
+        self.f = focal_length
+        self.p = pitch
+        self.R = np.array([[1,  0],
+                           [-1/self.f, 1]],
+                          dtype = np.float64)
+        self.d = diameter
+
+        self.z = loc
+
+
+    def __matmul__(self, ray):
+        r, t = ray.rt
+
+        lens_num = np.around(r/self.p)
+        shift = -lens_num*self.p
+        rp = r + shift
+
+        rpt = self.R @ np.array([rp, t])
+
+        ray.rt = np.array([r, rpt[1]])
+
+
     def refract(self, rays):
         if hasattr(rays, '__iter__'):
             for ray in rays:
@@ -139,14 +164,9 @@ class Stop:
         else:
             pass
 
-
-
-
-
 class Image:
     def __init__(self, array1d = None):
         self.img = array1d
-
 
     def Make(self, rays, sampling = 2.0):
         """Creates an image using a sample of rays using their color and """
@@ -217,6 +237,10 @@ class CollimatedSource:
     def __len__(self):
         return self.num
 
+    def plot(self, ax, kwargs):
+        for ray in self.bundle:
+            ray.plot(ax, kwargs)
+
 
     
 class PointSource:
@@ -244,6 +268,10 @@ class PointSource:
     def __len__(self):
         return self.num
 
+    def plot(self, ax, kwargs):
+        for ray in self.bundle:
+            ray.plot(ax, kwargs)
+
 
 if __name__ == '__main__':
 
@@ -251,9 +279,10 @@ if __name__ == '__main__':
     Dist100 = Distance(100)
     Dist150 = Distance(150)
     Lens2 = ThinLens(50)
+    MLA = ThinLensMLA(25,.05)
 
     ColLight = CollimatedSource(.5)
-    PointLight = PointSource(-100, 0, .005)
+    PointLight = PointSource(-100, 0, .005, num = 501)
 
     fig,ax = pyp.subplots()
 
@@ -269,21 +298,27 @@ if __name__ == '__main__':
         Distance(2 * f_rl) @ ColLight[ii]
         ThinLens(f_rl) @ ColLight[ii]
         Distance(f_rl) @ ColLight[ii]
+        ThinLensMLA(25, .05) @ ColLight[ii]
+        Distance(f_rl) @ ColLight[ii]
 
         ColLight[ii].plot(ax)
     fig.show()
 
-    fig, ax = pyp.subplots()
+    fig, ax = pyp.subplots(dpi = 200)
     for ii in range(len(PointLight)):
         Distance(f_obj) @ PointLight[ii]
         ThinLens(f_obj) @ PointLight[ii]
         Distance(f_obj) @ PointLight[ii]
-        Stop(.2) @ PointLight[ii]
+        Stop(.3) @ PointLight[ii]
         Distance(f_rl) @ PointLight[ii]
         ThinLens(f_rl)  @ PointLight[ii]
         Distance(2 * f_rl) @ PointLight[ii]
         ThinLens(f_rl) @ PointLight[ii]
         Distance(f_rl) @ PointLight[ii]
+        ThinLensMLA(25, .1) @ PointLight[ii]
+        Distance(f_rl) @ PointLight[ii]
 
-        PointLight[ii].plot(ax, {'alpha':.5})
+        PointLight[ii].plot(ax, {'alpha':.1})
+
+
     fig.show()
