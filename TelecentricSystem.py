@@ -54,13 +54,16 @@ class BiTelecentricFLFM:
 
 if __name__ == '__main__':
     pm2 = roc.PointSource(-120,-.2, .005, num = 501, color='#008080')
-    pm1 = roc.PointSource(-110,-.1, .005, num = 501, color='#808000')
+    pm1 = roc.PointSource(-140,-.1, .005, num = 501, color='#00FF00')
     p0  = roc.PointSource(-100,  0, .005, num = 501, color = '#0000FF')
     p1  = roc.PointSource( -90, .1, .005, num = 501, color = '#FF0000')
-    p2  = roc.PointSource( -80, .2, .005, num = 501, color = '#00FF00')
+    p2  = roc.PointSource( -80, .2, .005, num = 501, color = '#808000')
     ps = [pm2, pm1, p0, p1, p2]
+    ps = [pm1, p0, p1]
+    #ps = [p0]
 
     FLFM = BiTelecentricFLFM(100,40,40,40,.1,dAS = .6, dFS = .1)
+    Sensor = roc.Image(.4, .002, intensity=.0002)
 
     fig, ax = pyp.subplots(dpi = 200)
 
@@ -68,12 +71,16 @@ if __name__ == '__main__':
         FLFM @ p
         p.plot(ax, {'alpha':.05})
 
+        Sensor + p
+
     fig.show()
+#%%
+    Sensor.Display(width = 100)
 
 
-    cm1 = roc.CollimatedSource(.2, num = 51, theta =-.001, cmap = 'autumn')
-    c0  = roc.CollimatedSource(.2, num = 51, theta =  0,  cmap = 'winter')
-    c1  = roc.CollimatedSource(.2, num = 51, theta = .001, cmap = 'cool')
+    cm1 = roc.CollimatedSource(.2, num = 51, theta =-.004, cmap = 'autumn')
+    c0  = roc.CollimatedSource(.2, num = 51, theta =  0,  cmap = 'winter',zstart=-200)
+    c1  = roc.CollimatedSource(.2, num = 51, theta = .002, cmap = 'cool')
 
     cs = [cm1, c0, c1]
 

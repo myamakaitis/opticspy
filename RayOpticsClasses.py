@@ -27,7 +27,7 @@ def hex2rgb(hex_str):
     r, g, b = '0x' + hex_str[1:3], '0x' + hex_str[3:5], '0x' + hex_str[5:]
     r, g, b = int(r,0), int(g,0), int(b,0)
 
-    return r,g,b
+    return np.array([r,g,b])
 
 
 
@@ -164,42 +164,6 @@ class Stop:
         else:
             pass
 
-class Image:
-    def __init__(self, array1d = None):
-        self.img = array1d
-
-    def Make(self, rays, sampling = 2.0):
-        """Creates an image using a sample of rays using their color and """
-
-        n_rays = len(rays)
-        img_size = int(n_rays / sampling)
-        if img_size % 2 == 0:
-            img_size += 1
-
-        self.img = np.zeros((img_size, 3), dtype = np.float64)
-
-        self.r_max = np.max([np.abs(ray.r) for ray in rays])
-
-        #for better results could blur each ray using a kernel
-        for ray in rays:
-            pos_frac = ray.r / self.r_max
-
-            img_index = int(.5*(1 - pos_frac)*img_size)
-
-            self.img[img_index] += ray.get_rgb()
-
-    def Display(self, show = False, ax = None, width = 10, title = ''):
-        if ax is None:
-            fig, ax = pyp.subplots()
-
-        self.img2d = np.array(width * [self.img])
-        self.img2d = np.swapaxes(self.img2d, 0, 1)
-
-        ax.imshow(self.img2d)
-        ax.set_title(title)
-
-        if show:
-            fig.show()
 
 class CollimatedSource:
     def __init__(self, r_max, r_min = None, num = 51, zstart = -100, theta = 0, n_ior = 1,
@@ -272,6 +236,57 @@ class PointSource:
         for ray in self.bundle:
             ray.plot(ax, kwargs)
 
+
+
+class Image:
+    def __init__(self, extent, sens_size, intensity = .1):
+        self.r_max = extent
+        self.n_px = int(1 + 2 * ((self.r_max // sens_size)+1))
+        self.img = np.zeros((self.n_px, 3), dtype = np.float64)
+
+        self.intensity = intensity
+
+    def Add(self, ray):
+        """Creates an image using a sample of rays using their color and """
+        if ray.stopped:
+            return
+        #for better results could blur each ray using a kernel
+        r = ray.rt[0]
+        pos_frac = r / self.r_max
+
+        if pos_frac > 1 or pos_frac < -1:
+            return
+
+        img_idx = .5*(1 - pos_frac)*(self.n_px-1)
+
+        img_idx_l = int(np.floor(img_idx))
+        img_idx_u = int(np.ceil(img_idx))
+
+        idx_frac = img_idx - img_idx_l
+
+
+        self.img[img_idx_u] += ray.get_rgb() * (idx_frac) * self.intensity
+        self.img[img_idx_l] += ray.get_rgb() * (1 - idx_frac) * self.intensity
+
+
+    def __add__(self, ray):
+        if hasattr(ray, '__getitem__'):
+            for ii in range(len(ray)):
+                self.Add(ray[ii])
+        else: self.Add(ray)
+
+    def Display(self, show = True, ax = None, width = 10, title = ''):
+        if ax is None:
+            fig, ax = pyp.subplots(dpi = 200)
+
+        self.img2d = np.array(width * [self.img])
+        self.img2d = np.swapaxes(self.img2d, 0, 1)
+
+        ax.imshow(self.img2d)
+        ax.set_title(title)
+
+        if show:
+            fig.show()
 
 if __name__ == '__main__':
 
