@@ -21,13 +21,18 @@ def rgb2hex(rgb):
 
 
 def hex2rgb(hex_str):
+    """
+    Converts a hex number string representing color into rgb values
+    :param hex_str: 7 character string with the first character being ignored
+    :return: unsigned 8 bit integer array of red green and blue values
+    """
     if len(hex_str) != 7:
         raise ValueError("Hex String must be 7 characters")
 
     r, g, b = '0x' + hex_str[1:3], '0x' + hex_str[3:5], '0x' + hex_str[5:]
-    r, g, b = int(r,0), int(g,0), int(b,0)
+    r, g, b = int(r, 0), int(g, 0), int(b, 0)
 
-    return np.array([r,g,b])
+    return np.array([r, g, b], dtype = np.uint8)
 
 
 
@@ -36,7 +41,7 @@ class Ray:
         #self.t = theta
         #self.r = r
         self.n = n_current
-        self.stopped = False #has to be done before self.rt
+        self.stopped = False  # has to be done before self.rt
 
         self.rt = np.array([r, theta])
         
@@ -78,7 +83,7 @@ class Path(Ray):
         r = Parray[0]
         z = Parray[1]
 
-        ax.plot(z,r, color = self.color, **plot_kwargs)
+        ax.plot(z, r, color = self.color, **plot_kwargs)
 
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
@@ -138,8 +143,8 @@ class Distance:
     def __init__(self, dist):
         self.dz = dist
         self.T = np.array([[1, self.dz],
-                           [0, 1      ]]
-                          , dtype = np.float64)
+                           [0, 1      ]],
+                          dtype = np.float64)
 
     def __matmul__(self, ray):
         if hasattr(ray, 'z'):
@@ -159,7 +164,7 @@ class Stop:
 
     def __matmul__(self, ray):
         r = ray.rt[0]
-        if r > self.r_max or r <  self.r_min:
+        if r > self.r_max or r < self.r_min:
             ray.stopped = True
         else:
             pass
@@ -189,7 +194,7 @@ class CollimatedSource:
 
         self.r_array = np.linspace(self.r_min, self.r_max, self.num)
         self.bundle = []
-        self.cmap = cm.get_cmap(cmap,8)
+        self.cmap = cm.get_cmap(cmap, 8)
         for ii, r in enumerate(self.r_array):
 
             c_hex = rgb2hex(self.cmap(ii / self.num)[:-1])
@@ -294,12 +299,12 @@ if __name__ == '__main__':
     Dist100 = Distance(100)
     Dist150 = Distance(150)
     Lens2 = ThinLens(50)
-    MLA = ThinLensMLA(25,.05)
+    MLA = ThinLensMLA(25, .05)
 
     ColLight = CollimatedSource(.5)
     PointLight = PointSource(-100, 0, .005, num = 501)
 
-    fig,ax = pyp.subplots()
+    fig, ax = pyp.subplots()
 
     f_obj = 100
     f_rl  = 50
@@ -333,7 +338,7 @@ if __name__ == '__main__':
         ThinLensMLA(25, .1) @ PointLight[ii]
         Distance(f_rl) @ PointLight[ii]
 
-        PointLight[ii].plot(ax, {'alpha':.1})
+        PointLight[ii].plot(ax, {'alpha': .1})
 
 
     fig.show()
