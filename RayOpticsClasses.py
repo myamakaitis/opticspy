@@ -21,13 +21,18 @@ def rgb2hex(rgb):
 
 
 def hex2rgb(hex_str):
+    """
+    Converts a hex number string representing color into rgb values
+    :param hex_str: 7 character string with the first character being ignored
+    :return: unsigned 8 bit integer array of red green and blue values
+    """
     if len(hex_str) != 7:
         raise ValueError("Hex String must be 7 characters")
 
     r, g, b = '0x' + hex_str[1:3], '0x' + hex_str[3:5], '0x' + hex_str[5:]
-    r, g, b = int(r,0), int(g,0), int(b,0)
+    r, g, b = int(r, 0), int(g, 0), int(b, 0)
 
-    return r,g,b
+    return np.array([r, g, b], dtype = np.uint8)
 
 
 
@@ -36,7 +41,7 @@ class Ray:
         #self.t = theta
         #self.r = r
         self.n = n_current
-        self.stopped = False #has to be done before self.rt
+        self.stopped = False  # has to be done before self.rt
 
         self.rt = np.array([r, theta])
         
@@ -78,7 +83,7 @@ class Path(Ray):
         r = Parray[0]
         z = Parray[1]
 
-        ax.plot(z,r, color = self.color, **plot_kwargs)
+        ax.plot(z, r, color = self.color, **plot_kwargs)
 
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
@@ -138,8 +143,8 @@ class Distance:
     def __init__(self, dist):
         self.dz = dist
         self.T = np.array([[1, self.dz],
-                           [0, 1      ]]
-                          , dtype = np.float64)
+                           [0, 1      ]],
+                          dtype = np.float64)
 
     def __matmul__(self, ray):
         if hasattr(ray, 'z'):
@@ -159,47 +164,11 @@ class Stop:
 
     def __matmul__(self, ray):
         r = ray.rt[0]
-        if r > self.r_max or r <  self.r_min:
+        if r > self.r_max or r < self.r_min:
             ray.stopped = True
         else:
             pass
 
-class Image:
-    def __init__(self, array1d = None):
-        self.img = array1d
-
-    def Make(self, rays, sampling = 2.0):
-        """Creates an image using a sample of rays using their color and """
-
-        n_rays = len(rays)
-        img_size = int(n_rays / sampling)
-        if img_size % 2 == 0:
-            img_size += 1
-
-        self.img = np.zeros((img_size, 3), dtype = np.float64)
-
-        self.r_max = np.max([np.abs(ray.r) for ray in rays])
-
-        #for better results could blur each ray using a kernel
-        for ray in rays:
-            pos_frac = ray.r / self.r_max
-
-            img_index = int(.5*(1 - pos_frac)*img_size)
-
-            self.img[img_index] += ray.get_rgb()
-
-    def Display(self, show = False, ax = None, width = 10, title = ''):
-        if ax is None:
-            fig, ax = pyp.subplots()
-
-        self.img2d = np.array(width * [self.img])
-        self.img2d = np.swapaxes(self.img2d, 0, 1)
-
-        ax.imshow(self.img2d)
-        ax.set_title(title)
-
-        if show:
-            fig.show()
 
 class CollimatedSource:
     def __init__(self, r_max, r_min = None, num = 51, zstart = -100, theta = 0, n_ior = 1,
@@ -225,7 +194,7 @@ class CollimatedSource:
 
         self.r_array = np.linspace(self.r_min, self.r_max, self.num)
         self.bundle = []
-        self.cmap = cm.get_cmap(cmap,8)
+        self.cmap = cm.get_cmap(cmap, 8)
         for ii, r in enumerate(self.r_array):
 
             c_hex = rgb2hex(self.cmap(ii / self.num)[:-1])
@@ -273,18 +242,69 @@ class PointSource:
             ray.plot(ax, kwargs)
 
 
+
+class Image:
+    def __init__(self, extent, sens_size, intensity = .1):
+        self.r_max = extent
+        self.n_px = int(1 + 2 * ((self.r_max // sens_size)+1))
+        self.img = np.zeros((self.n_px, 3), dtype = np.float64)
+
+        self.intensity = intensity
+
+    def Add(self, ray):
+        """Creates an image using a sample of rays using their color and """
+        if ray.stopped:
+            return
+        #for better results could blur each ray using a kernel
+        r = ray.rt[0]
+        pos_frac = r / self.r_max
+
+        if pos_frac > 1 or pos_frac < -1:
+            return
+
+        img_idx = .5*(1 - pos_frac)*(self.n_px-1)
+
+        img_idx_l = int(np.floor(img_idx))
+        img_idx_u = int(np.ceil(img_idx))
+
+        idx_frac = img_idx - img_idx_l
+
+
+        self.img[img_idx_u] += ray.get_rgb() * (idx_frac) * self.intensity
+        self.img[img_idx_l] += ray.get_rgb() * (1 - idx_frac) * self.intensity
+
+
+    def __add__(self, ray):
+        if hasattr(ray, '__getitem__'):
+            for ii in range(len(ray)):
+                self.Add(ray[ii])
+        else: self.Add(ray)
+
+    def Display(self, show = True, ax = None, width = 10, title = ''):
+        if ax is None:
+            fig, ax = pyp.subplots(dpi = 200)
+
+        self.img2d = np.array(width * [self.img])
+        self.img2d = np.swapaxes(self.img2d, 0, 1)
+
+        ax.imshow(self.img2d)
+        ax.set_title(title)
+
+        if show:
+            fig.show()
+
 if __name__ == '__main__':
 
     Lens1 = ThinLens(100)
     Dist100 = Distance(100)
     Dist150 = Distance(150)
     Lens2 = ThinLens(50)
-    MLA = ThinLensMLA(25,.05)
+    MLA = ThinLensMLA(25, .05)
 
     ColLight = CollimatedSource(.5)
     PointLight = PointSource(-100, 0, .005, num = 501)
 
-    fig,ax = pyp.subplots()
+    fig, ax = pyp.subplots()
 
     f_obj = 100
     f_rl  = 50
@@ -318,7 +338,7 @@ if __name__ == '__main__':
         ThinLensMLA(25, .1) @ PointLight[ii]
         Distance(f_rl) @ PointLight[ii]
 
-        PointLight[ii].plot(ax, {'alpha':.1})
+        PointLight[ii].plot(ax, {'alpha': .1})
 
 
     fig.show()
