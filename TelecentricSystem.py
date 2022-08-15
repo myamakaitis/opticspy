@@ -53,17 +53,20 @@ class BiTelecentricFLFM:
         else: self.calcPath(ray)
 
 if __name__ == '__main__':
+    fmla = 60
+    pmla = .05
+
     pm2 = roc.PointSource(-120,-.2, .005, num = 501, color='#008080')
-    pm1 = roc.PointSource(-140,-.1, .005, num = 501, color='#00FF00')
-    p0  = roc.PointSource(-100,  0, .005, num = 501, color = '#0000FF')
-    p1  = roc.PointSource( -90, .1, .005, num = 501, color = '#FF0000')
+    pm1 = roc.PointSource(-130,  0, .0031, num = 501, color='#00FF00')
+    p0  = roc.PointSource(-100,  0, .0031, num = 501, color = '#0000FF')
+    p1  = roc.PointSource( -70,  0, .0031, num = 501, color = '#FF0000')
     p2  = roc.PointSource( -80, .2, .005, num = 501, color = '#808000')
     ps = [pm2, pm1, p0, p1, p2]
     ps = [pm1, p0, p1]
     #ps = [p0]
 
-    FLFM = BiTelecentricFLFM(100,40,40,40,.1,dAS = .6, dFS = .1)
-    Sensor = roc.Image(.4, .002, intensity=.0002)
+    FLFM = BiTelecentricFLFM(100,40,40,fmla,pmla,dAS = .6, dFS = .1)
+    Sensor = roc.Image(.4, .002, intensity=.02)
 
     fig, ax = pyp.subplots(dpi = 200)
 
@@ -78,13 +81,14 @@ if __name__ == '__main__':
     Sensor.Display(width = 100)
 
 
-    cm1 = roc.CollimatedSource(.2, num = 51, theta =-.004, cmap = 'autumn')
-    c0  = roc.CollimatedSource(.2, num = 51, theta =  0,  cmap = 'winter',zstart=-200)
-    c1  = roc.CollimatedSource(.2, num = 51, theta = .002, cmap = 'cool')
+    cm1 = roc.CollimatedSource(.2, num = 25, theta =-.004, color = 'autumn')
+    c0  = roc.CollimatedSource(.4, num = 51, theta =  0,  color = 'winter',zstart=-200)
+    c1  = roc.CollimatedSource(.2, num = 25, theta = .002, color = 'cool')
 
     cs = [cm1, c0, c1]
 
     FLFM = BiTelecentricFLFM(100,40,40,40,.1,dAS = .6, dFS = .1)
+    Sensor = roc.Image(.4, .002, intensity=.2)
 
     pyp.rcParams.update({"font.family":"serif"})
     fig, ax = pyp.subplots(dpi = 200)
@@ -92,8 +96,11 @@ if __name__ == '__main__':
     for c in cs:
         FLFM @ c
         c.plot(ax, {'alpha':.3})
+        Sensor + c
 
 
     ax.tick_params(axis = 'x', direction = 'inout')
     ax.axis('off')
-    fig.show()
+    # fig.show()
+
+    Sensor.Display(width=100)
