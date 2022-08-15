@@ -19,7 +19,6 @@ def rgb2hex(rgb):
 
     return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
 
-
 def hex2rgb(hex_str):
     """
     Converts a hex number string representing color into rgb values
@@ -34,6 +33,16 @@ def hex2rgb(hex_str):
 
     return np.array([r, g, b], dtype = np.uint8)
 
+def getCmap(color, MPL_grades = 11):
+    if callable(color):
+        cmap = color # if a function is passed, its assumed that its already a colormap that returns a hex string
+    elif color[0] == '#':
+        cmap = lambda x: color #make a function that just returns the color
+    else:
+        mpl_cmap = cm.get_cmap(color, MPL_grades) # grab the callable matplotlib colormap
+        cmap = lambda x: rgb2hex(mpl_cmap(x)[:-1])  # make the colormap drop the alpha component
+
+    return cmap
 
 
 class Ray:
@@ -44,9 +53,8 @@ class Ray:
         self.stopped = False  # has to be done before self.rt
 
         self.rt = np.array([r, theta])
-        
-        self.dx, self.dy = np.cos(theta), np.sin(theta)
-        self.slope = np.array([self.dx, self.dy])
+        # self.dx, self.dy = np.cos(theta), np.sin(theta)
+        # self.slope = np.array([self.dx, self.dy])
 
         self.color = color
 
@@ -57,11 +65,10 @@ class Ray:
 
 class Path(Ray):
     def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#000000'):
-        self.Pstates = []
+        self.Pstates = [] #These lists must be created before the other init since it sets rt and set rt has calls to these
         self.tstates = []
         self.z = z
         super().__init__(theta, r, n_current=n_current, color=color)
-
 
 
     @property
@@ -78,17 +85,27 @@ class Path(Ray):
         P = np.array([self._rt[0], self.z])
         self.Pstates.append(P)
 
-    def plot(self, ax, plot_kwargs = {}):
+    def plot(self, ax, kwargs = {}):
         Parray = np.array(self.Pstates).T
         r = Parray[0]
         z = Parray[1]
 
-        ax.plot(z, r, color = self.color, **plot_kwargs)
+        ax.plot(z, r, color = self.color, **kwargs)
 
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
-class Bundle:
-    pass
+
+class Distance:
+    def __init__(self, dist):
+        self.dz = dist
+        self.T = np.array([[1, self.dz],
+                           [0, 1      ]],
+                          dtype = np.float64)
+
+    def __matmul__(self, ray):
+        if hasattr(ray, 'z'):
+            ray.z += self.dz
+        ray.rt = self.T @ ray.rt
 
 
 class ThinLens:
@@ -98,7 +115,6 @@ class ThinLens:
                            [-1/self.f, 1]],
                           dtype = np.float64)
         self.d = diameter
-
         self.z = loc
 
 
@@ -106,17 +122,16 @@ class ThinLens:
         ray.rt = self.R @ ray.rt
 
 
-
-class ThinLensMLA:
+class ThinLensMLA(ThinLens):
     def __init__(self, focal_length, pitch, diameter = np.inf, loc = None):
-        self.f = focal_length
+        super().__init__(focal_length, diameter = diameter, loc = loc)
+        # self.f = focal_length
         self.p = pitch
-        self.R = np.array([[1,  0],
-                           [-1/self.f, 1]],
-                          dtype = np.float64)
-        self.d = diameter
-
-        self.z = loc
+        # self.R = np.array([[1,  0],
+        #                    [-1/self.f, 1]],
+        #                   dtype = np.float64)
+        # self.d = diameter
+        # self.z = loc
 
 
     def __matmul__(self, ray):
@@ -139,17 +154,17 @@ class ThinLensMLA:
             rays.rt = self.R @ rays.rt
 
 
-class Distance:
-    def __init__(self, dist):
-        self.dz = dist
-        self.T = np.array([[1, self.dz],
-                           [0, 1      ]],
-                          dtype = np.float64)
+# class ThickLens:
+#     def __init__(self, f1, f2, d, loc = None):
+#         self.f1 = f1
+#         self.f2 = f2
+#         self.d = d
+#
+#         self.z = loc
+#         self.SysMatrix()
 
-    def __matmul__(self, ray):
-        if hasattr(ray, 'z'):
-            ray.z += self.dz
-        ray.rt = self.T @ ray.rt
+    def SysMatrix(self):
+        self.R = ThinLens(self.f2).R @ Distance(self.d).T @ ThinLens(self.f1).R
 
 
 class Stop:
@@ -170,9 +185,72 @@ class Stop:
             pass
 
 
-class CollimatedSource:
+class ThickLens:
+    pass
+
+
+class OpticsSystem(list):
+    def __init__(self, element_list, propagate = 0):
+        super().__init__(element_list)
+
+        #Add a distance element to the system between defined elements using the difference in z positions
+        for i, (prev_element, next_element) in enumerate(zip(self[:-1],self[1:])):
+            dz = next_element.z - prev_element.z
+            dist = Distance(dz)
+
+            self.insert(1 + 2*i, dist)
+        self.append(Distance(propagate))
+
+
+    def calcPath(self, ray):
+        dobj = Distance(self[0].z - ray.z)
+        dobj @ ray
+
+        for element in self:
+            element @ ray
+
+
+    def __matmul__(self, rays):
+        if hasattr(rays, '__getitem__'):
+            for ray in rays:
+                self.calcPath(ray)
+        else: self.calcPath(rays)
+
+
+class Bundle:
+    def __init__(self, num, color):
+
+        self.bundle = []
+        self.num = num
+        self.cmap = getCmap(color)
+
+    def __len__(self):
+        return self.num
+
+    def __getitem__(self, item):
+        return self.bundle[item]
+
+
+    def __iter__(self):
+        self.ii = 0
+        return self
+
+    def __next__(self):
+        if self.ii < self.num:
+            ray = self[self.ii]
+            self.ii += 1
+            return ray
+        else:
+            raise StopIteration
+
+    def plot(self, ax, kwargs = {}):
+        for ray in self.bundle:
+            ray.plot(ax, kwargs)
+
+
+class CollimatedSource(Bundle):
     def __init__(self, r_max, r_min = None, num = 51, zstart = -100, theta = 0, n_ior = 1,
-                 cmap = 'viridis'):
+                 color = 'viridis'):
         """
         :param r_max: maximum height of collimated source
         :param r_min: minimum height of collimated source
@@ -182,9 +260,10 @@ class CollimatedSource:
         :param theta:  angle in radians of the light source
         :param n_ior: starting index of refraction
         """
+        super().__init__(num, color)
+
         self.z = zstart
         self.n_ior = n_ior
-        self.num = num
         self.t = theta
         self.r_max = r_max
         if r_min is None:
@@ -193,28 +272,19 @@ class CollimatedSource:
             self.r_min = r_min
 
         self.r_array = np.linspace(self.r_min, self.r_max, self.num)
-        self.bundle = []
-        self.cmap = cm.get_cmap(cmap, 8)
+
         for ii, r in enumerate(self.r_array):
 
-            c_hex = rgb2hex(self.cmap(ii / self.num)[:-1])
+            c_hex = self.cmap(ii / self.num)
             self.bundle.append(Path(self.t, r, z = self.z, n_current=self.n_ior, color= c_hex))
 
-    def __getitem__(self, item):
-        return self.bundle[item]
-
-    def __len__(self):
-        return self.num
-
-    def plot(self, ax, kwargs):
-        for ray in self.bundle:
-            ray.plot(ax, kwargs)
 
 
-    
-class PointSource:
+class PointSource(Bundle):
     def __init__(self, z, r, theta_max, theta_min = None, num = 51, n_ior = 1,
                  color = '#FF0000'):
+        super().__init__(num, color)
+
         self.z = z
         self.r = r
         self.t_max = theta_max
@@ -222,25 +292,19 @@ class PointSource:
             self.t_min = -theta_max
         else:
             self.t_min = theta_min
-        self.num = num
         self.n_ior = n_ior
         self.color = color
 
         self.t_array = np.linspace(self.t_min, self.t_max, self.num)
-        self.bundle = []
         for ii, t in enumerate(self.t_array):
-            self.bundle.append(Path(t, self.r, z=self.z, n_current=self.n_ior, color=self.color))
+            c_hex = self.cmap(ii / self.num)
+            self.bundle.append(Path(t, self.r, z=self.z, n_current=self.n_ior, color=c_hex))
 
     def __getitem__(self, item):
         return self.bundle[item]
 
     def __len__(self):
         return self.num
-
-    def plot(self, ax, kwargs):
-        for ray in self.bundle:
-            ray.plot(ax, kwargs)
-
 
 
 class Image:
@@ -282,10 +346,11 @@ class Image:
 
     def Display(self, show = True, ax = None, width = 10, title = ''):
         if ax is None:
-            fig, ax = pyp.subplots(dpi = 200)
+            fig, ax = pyp.subplots(dpi = 200, figsize = (.015 * width, .015 * self.n_px))
 
-        self.img2d = np.array(width * [self.img])
+        self.img2d = np.array(width * [self.img], dtype = np.float64)
         self.img2d = np.swapaxes(self.img2d, 0, 1)
+        self.img2d /= np.max(self.img2d)
 
         ax.imshow(self.img2d)
         ax.set_title(title)
@@ -295,50 +360,25 @@ class Image:
 
 if __name__ == '__main__':
 
-    Lens1 = ThinLens(100)
-    Dist100 = Distance(100)
-    Dist150 = Distance(150)
-    Lens2 = ThinLens(50)
-    MLA = ThinLensMLA(25, .05)
+    Obj = ThinLens(100, loc = 0)
+    Lens1 = ThinLens(50, loc = 150)
+    Lens2 = ThinLens(50, loc = 250)
+    MLA = ThinLensMLA(25, .05, loc = 300)
 
     ColLight = CollimatedSource(.5)
-    PointLight = PointSource(-100, 0, .005, num = 501)
+    PointLight = PointSource(-100, 0, .005, num = 501, color = 'autumn')
+
+
+
+
+    FLFM = OpticsSystem([Obj, Lens1, Lens2, MLA], propagate = 50)
 
     fig, ax = pyp.subplots()
-
-    f_obj = 100
-    f_rl  = 50
-
-    fig, ax = pyp.subplots()
-    for ii in range(len(ColLight)):
-        Distance(f_obj) @ ColLight[ii]
-        ThinLens(f_obj) @ ColLight[ii]
-        Distance(f_obj + f_rl) @ ColLight[ii]
-        ThinLens(f_rl)  @ ColLight[ii]
-        Distance(2 * f_rl) @ ColLight[ii]
-        ThinLens(f_rl) @ ColLight[ii]
-        Distance(f_rl) @ ColLight[ii]
-        ThinLensMLA(25, .05) @ ColLight[ii]
-        Distance(f_rl) @ ColLight[ii]
-
-        ColLight[ii].plot(ax)
+    FLFM @ ColLight
+    ColLight.plot(ax)
     fig.show()
 
-    fig, ax = pyp.subplots(dpi = 200)
-    for ii in range(len(PointLight)):
-        Distance(f_obj) @ PointLight[ii]
-        ThinLens(f_obj) @ PointLight[ii]
-        Distance(f_obj) @ PointLight[ii]
-        Stop(.3) @ PointLight[ii]
-        Distance(f_rl) @ PointLight[ii]
-        ThinLens(f_rl)  @ PointLight[ii]
-        Distance(2 * f_rl) @ PointLight[ii]
-        ThinLens(f_rl) @ PointLight[ii]
-        Distance(f_rl) @ PointLight[ii]
-        ThinLensMLA(25, .1) @ PointLight[ii]
-        Distance(f_rl) @ PointLight[ii]
-
-        PointLight[ii].plot(ax, {'alpha': .1})
-
-
+    fig, ax = pyp.subplots()
+    FLFM @ PointLight
+    PointLight.plot(ax, {'alpha': .1})
     fig.show()
