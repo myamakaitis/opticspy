@@ -94,6 +94,16 @@ class Path(Ray):
 
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
+class ABCD:
+    def __init__(self, A, B, C, D, loc = 0):
+        self.z = loc
+        self.A = np.array([[A, B],
+                           [C, D]])
+
+    def __matmul__(self, ray):
+        if hasattr(ray, 'z'):
+            ray.z += self.A[0,1]
+        ray.rt = self.A @ ray.rt
 
 class Distance:
     def __init__(self, dist):
@@ -108,11 +118,43 @@ class Distance:
         ray.rt = self.T @ ray.rt
 
 
+class Interface:
+    def __init__(self, n2, n1 = 1, loc = 0):
+        self.n1 = n1
+        self.n2 = n2
+        self.z = loc
+        self.MatrixI()
+
+
+    def MatrixI(self):
+        self.I = np.array([[1, 0],
+                           [0, self.n1 / self.n2]],
+                          dtype=np.float64)
+
+    def __matmul__(self, ray):
+        ray.rt = self.I @ ray.rt
+
+
 class ThinLens:
     def __init__(self, focal_length, diameter = np.inf, loc = None):
         self.f = focal_length
         self.R = np.array([[1,  0],
                            [-1/self.f, 1]],
+                          dtype = np.float64)
+        self.d = diameter
+        self.z = loc
+
+
+    def __matmul__(self, ray):
+        ray.rt = self.R @ ray.rt
+
+
+class Slab:
+    def __init__(self, n, thickness, diameter = np.inf, loc = None):
+        self.n = n
+        self.t = thickness
+        self.R = np.array([[1, self.t / n],
+                           [0, 1]],
                           dtype = np.float64)
         self.d = diameter
         self.z = loc
@@ -186,7 +228,25 @@ class Stop:
 
 
 class ThickLens:
-    pass
+    def __init__(self, WD, f, thickness, loc = 0, diameter = np.inf):
+        self.z  = loc
+        self.t = thickness
+
+        B = thickness
+        C = -1 / np.sqrt(f * WD)
+
+
+        A = -f * C
+        D = -WD * C
+
+        self.R = np.array([[A, B],
+                           [C, D]])
+
+
+    def __matmul__(self, ray):
+        if hasattr(ray, 'z'):
+            ray.z += self.t
+        ray.rt = self.R @ ray.rt
 
 
 class OpticsSystem(list):
@@ -211,7 +271,7 @@ class OpticsSystem(list):
 
 
     def __matmul__(self, rays):
-        if hasattr(rays, '__getitem__'):
+        if hasattr(rays, '__iter__'):
             for ray in rays:
                 self.calcPath(ray)
         else: self.calcPath(rays)
@@ -279,7 +339,6 @@ class CollimatedSource(Bundle):
             self.bundle.append(Path(self.t, r, z = self.z, n_current=self.n_ior, color= c_hex))
 
 
-
 class PointSource(Bundle):
     def __init__(self, z, r, theta_max, theta_min = None, num = 51, n_ior = 1,
                  color = '#FF0000'):
@@ -343,6 +402,11 @@ class Image:
             for ii in range(len(ray)):
                 self.Add(ray[ii])
         else: self.Add(ray)
+
+
+    def cap(self, max = 255):
+        over = self.img > max
+        self.img[over] = 255
 
     def Display(self, show = True, ax = None, width = 10, title = ''):
         if ax is None:
