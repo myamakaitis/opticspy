@@ -27,17 +27,17 @@ TestRev = Test
 # LensSystem    = roc.OpticsSystem([ThickLens], propagate=100)
 # LensSystemRev = roc.OpticsSystem([ThickLensRev], propagate=100)
 TestSystem    = roc.OpticsSystem([Test], propagate=200+zlens)
-TestSystemRev = roc.OpticsSystem([TestRev], propagate=200+zlens)
+TestSystemRev = TestSystem.Reverse()
 
 # ps12 = roc.PointSource(-f1,0,.3, num = 25)
 # ps18 = roc.PointSource(-(.01365741)**-1,0,.2, color = '#00FF00')
 # csf = roc.CollimatedSource(r_max = 25, zstart = -50)
 # csr = roc.CollimatedSource(r_max = 25, zstart = -50)
 cstm  = roc.CollimatedSource(r_max = 25, zstart = -200)
-cstmr = roc.CollimatedSource(r_max = 25, zstart = -200)
+cstmr = roc.CollimatedSource(r_max = 25, theta=0, zstart = 200)
 
 pstm  = roc.PointSource(-f1, 0, .2, num =25)
-pstmr = roc.PointSource(-f2, 0, .1, num = 25)
+pstmr = roc.PointSource( f2, 0, .1, num = 25)
 
 fig, ((ax1, ax2), (ax3, ax4)) = pyp.subplots(2, 2, sharex=True, sharey=True)
 
@@ -65,3 +65,5 @@ for ax in (ax1, ax2, ax2, ax4):
     ax.grid('True')
 
 fig.show()
+
+print(TestSystem[0].__class__.__name__)

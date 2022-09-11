@@ -1,6 +1,10 @@
 import numpy as np
 import matplotlib.pyplot as pyp
 from matplotlib import cm
+from functools import lru_cache
+
+def ABCDunpack(Mat):
+    return Mat[0,0], Mat[0,1], Mat[1,0], Mat[1,1]
 
 
 def rgb2hex(rgb):
@@ -95,58 +99,54 @@ class Path(Ray):
     """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
 class ABCD:
-    def __init__(self, A, B, C, D, loc = 0):
+    def __init__(self, A=1, B=0, C=0, D=1, loc=0.0):
+        self.A, self.B = A, B
+        self.C, self.D = C, D
+
         self.z = loc
-        self.A = np.array([[A, B],
-                           [C, D]])
+
+        self.SYS = np.array([[A, B],
+                             [C, D]])
 
     def __matmul__(self, ray):
         if hasattr(ray, 'z'):
-            ray.z += self.A[0,1]
-        ray.rt = self.A @ ray.rt
+            ray.z += self.B
+        ray.rt = self.SYS @ ray.rt
 
-class Distance:
-    def __init__(self, dist):
+    @lru_cache
+    def Reverse(self):
+        MatInv = np.linalg.inv(self.SYS)
+        Ainv, Binv, Cinv, Dinv = ABCDunpack(MatInv)
+        RevSys = ABCD(Ainv,Binv,Cinv,Dinv,loc=self.z+self.B)
+        return RevSys
+
+    def plot(self, ax, ylims):
+
+        if self.B == 0:
+            ax.vlines(self.z, ylims[0], ylims[1], color = 'k')
+
+
+class Distance(ABCD):
+    def __init__(self, dist, start=0):
         self.dz = dist
-        self.T = np.array([[1, self.dz],
-                           [0, 1      ]],
-                          dtype = np.float64)
 
-    def __matmul__(self, ray):
-        if hasattr(ray, 'z'):
-            ray.z += self.dz
-        ray.rt = self.T @ ray.rt
+        super().__init__(B = self.dz, loc=start)
 
 
-class Interface:
-    def __init__(self, n2, n1 = 1, loc = 0):
+class Interface(ABCD):
+    def __init__(self, n2, n1 = 1, loc = 0.0):
         self.n1 = n1
         self.n2 = n2
         self.z = loc
-        self.MatrixI()
+        super().__init__(D = n1/n2,loc = loc)
 
 
-    def MatrixI(self):
-        self.I = np.array([[1, 0],
-                           [0, self.n1 / self.n2]],
-                          dtype=np.float64)
-
-    def __matmul__(self, ray):
-        ray.rt = self.I @ ray.rt
-
-
-class ThinLens:
+class ThinLens(ABCD):
     def __init__(self, focal_length, diameter = np.inf, loc = None):
         self.f = focal_length
-        self.R = np.array([[1,  0],
-                           [-1/self.f, 1]],
-                          dtype = np.float64)
+        super().__init__(C = -1/self.f)
         self.d = diameter
         self.z = loc
-
-
-    def __matmul__(self, ray):
-        ray.rt = self.R @ ray.rt
 
 
 class Slab:
@@ -158,10 +158,6 @@ class Slab:
                           dtype = np.float64)
         self.d = diameter
         self.z = loc
-
-
-    def __matmul__(self, ray):
-        ray.rt = self.R @ ray.rt
 
 
 class ThinLensMLA(ThinLens):
@@ -183,41 +179,20 @@ class ThinLensMLA(ThinLens):
         shift = -lens_num*self.p
         rp = r + shift
 
-        rpt = self.R @ np.array([rp, t])
+        rpt = self.SYS @ np.array([rp, t])
 
         ray.rt = np.array([r, rpt[1]])
 
 
-    def refract(self, rays):
-        if hasattr(rays, '__iter__'):
-            for ray in rays:
-                ray.rt = self.R @ ray.rt
-        else:
-            rays.rt = self.R @ rays.rt
+class Stop(ABCD):
+    def __init__(self, r_max, r_min=None, loc=None):
+        super().__init__(loc=loc)
 
-
-# class ThickLens:
-#     def __init__(self, f1, f2, d, loc = None):
-#         self.f1 = f1
-#         self.f2 = f2
-#         self.d = d
-#
-#         self.z = loc
-#         self.SysMatrix()
-
-    def SysMatrix(self):
-        self.R = ThinLens(self.f2).R @ Distance(self.d).T @ ThinLens(self.f1).R
-
-
-class Stop:
-    def __init__(self, r_max, r_min = None, loc = None):
         self.r_max = r_max
         if r_min is None:
             self.r_min = -self.r_max
         else:
             self.r_min = r_min
-
-        self.z = loc
 
     def __matmul__(self, ray):
         r = ray.rt[0]
@@ -235,7 +210,6 @@ class ThickLens:
         B = thickness
         C = -1 / np.sqrt(f * WD)
 
-
         A = -f * C
         D = -WD * C
 
@@ -250,6 +224,10 @@ class ThickLens:
 
 
 class OpticsSystem(list):
+    """
+    Define an optical system using a list of elements
+    Distances between elements are found, and distance elements don't need to be added
+    """
     def __init__(self, element_list, propagate = 0):
         super().__init__(element_list)
 
@@ -258,11 +236,23 @@ class OpticsSystem(list):
             dz = next_element.z - prev_element.z
             dist = Distance(dz)
 
-            self.insert(1 + 2*i, dist)
+            self.insert(1 + 2*i, dist) #Inserts distances between elements
         self.append(Distance(propagate))
 
+        self.SYS = self[0].SYS
+        for element in self[1:]:
+            self.SYS = self.SYS @ element.SYS
 
-    def calcPath(self, ray):
+
+    def __repr__(self):
+        rep = ''
+        for element in self:
+            rep += f" -> {type(element).__name__}"
+
+        return rep
+
+
+    def calcPath(self, ray, first_element = 0):
         dobj = Distance(self[0].z - ray.z)
         dobj @ ray
 
@@ -275,6 +265,22 @@ class OpticsSystem(list):
             for ray in rays:
                 self.calcPath(ray)
         else: self.calcPath(rays)
+
+
+    def Reverse(self, propagate = None):
+        if propagate is None: propagate = -self[-1].dz
+
+        ReversedOrder = self[-2::-2] # reverse the list and drop the distance matrices
+        Reverse = [element.Reverse() for element in ReversedOrder]
+
+        OpticsSystemRev = OpticsSystem(Reverse, propagate=propagate) #create a new optics system using the original element list reversed
+
+        return OpticsSystemRev # return the reversed system
+
+    def plot(self, ax):
+        ylims = ax.get_ylim()
+        for elem in self:
+            elem.plot(ax, ylims)
 
 
 class Bundle:
@@ -371,7 +377,6 @@ class Image:
         self.r_max = extent
         self.n_px = int(1 + 2 * ((self.r_max // sens_size)+1))
         self.img = np.zeros((self.n_px, 3), dtype = np.float64)
-
         self.intensity = intensity
 
     def Add(self, ray):

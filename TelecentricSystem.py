@@ -58,12 +58,12 @@ if __name__ == '__main__':
 
     pm2 = roc.PointSource(-120,-.2, .005, num = 501, color='#008080')
     pm1 = roc.PointSource(-130,  0, .0031, num = 501, color='#00FF00')
-    p0  = roc.PointSource(-100,  0, .0031, num = 501, color = 'viridis')
+    p0  = roc.PointSource(-150,  .3, .0051, num = 501, color = 'viridis')
     p1  = roc.PointSource( -70,  0, .0031, num = 501, color = '#FF0000')
     p2  = roc.PointSource( -80, .2, .005, num = 501, color = '#808000')
     ps = [pm2, pm1, p0, p1, p2]
     ps = [pm1, p0, p1]
-    ps = [p0]
+    # ps = [p0]
 
     FLFM = BiTelecentricFLFM(100,40,40,fmla,pmla,dAS = .6, dFS = .1)
     Sensor = roc.Image(.4, .008, intensity=.01)
@@ -79,7 +79,6 @@ if __name__ == '__main__':
     fig.show()
 
     Sensor.Display(width = 100)
-
 
     cm1 = roc.CollimatedSource(.2, num = 25, theta =-.004, color = 'autumn')
     c0  = roc.CollimatedSource(.4, num = 51, theta =  0,  color = 'winter',zstart=-200)
@@ -97,7 +96,6 @@ if __name__ == '__main__':
         FLFM @ c
         c.plot(ax, {'alpha':.3})
         Sensor + c
-
 
     ax.tick_params(axis = 'x', direction = 'inout')
     # ax.axis('off')
