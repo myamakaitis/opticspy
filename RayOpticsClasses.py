@@ -3,9 +3,8 @@ import matplotlib.pyplot as pyp
 from matplotlib import cm
 from functools import lru_cache
 
-def ABCDunpack(Mat):
-    return Mat[0,0], Mat[0,1], Mat[1,0], Mat[1,1]
-
+# def ABCDunpack(Mat):
+#     return Mat[0,0], Mat[0,1], Mat[1,0], Mat[1,1]
 
 def rgb2hex(rgb):
     """
@@ -48,7 +47,6 @@ def getCmap(color, MPL_grades = 11):
 
     return cmap
 
-
 class Ray:
     def __init__(self, theta, r, n_current = 1, color = '#FFFFFF'):
         #self.t = theta
@@ -65,7 +63,6 @@ class Ray:
 
     def get_rgb(self):
         return hex2rgb(self.color)
-
 
 class Path(Ray):
     def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#000000'):
@@ -116,15 +113,18 @@ class ABCD:
     @lru_cache
     def Reverse(self):
         MatInv = np.linalg.inv(self.SYS)
-        Ainv, Binv, Cinv, Dinv = ABCDunpack(MatInv)
+        Ainv, Binv, Cinv, Dinv = MatInv.ravel()
         RevSys = ABCD(Ainv,Binv,Cinv,Dinv,loc=self.z+self.B)
         return RevSys
 
     def plot(self, ax, ylims):
+        if hasattr(self, 'd'):
+            min, max = -self.d/2, self.d/2
+        else:
+            min, max = ylims[0], ylims[1]
 
         if self.B == 0:
-            ax.vlines(self.z, ylims[0], ylims[1], color = 'k')
-
+            ax.vlines(self.z, min, max, color = 'purple', zorder = -10)
 
 class Distance(ABCD):
     def __init__(self, dist, start=0):
@@ -201,10 +201,17 @@ class Stop(ABCD):
         else:
             pass
 
+    def plot(self, ax, ylims):
 
-class ThickLens:
+        if self.B == 0:
+            ax.vlines(self.z, ylims[0], self.r_min, color = 'k')
+            ax.vlines(self.z, self.r_max, ylims[1], color = 'k')
+
+
+class ThickLens(ABCD):
     def __init__(self, WD, f, thickness, loc = 0, diameter = np.inf):
         self.z  = loc
+        self.d = diameter
         self.t = thickness
 
         B = thickness
@@ -213,14 +220,7 @@ class ThickLens:
         A = -f * C
         D = -WD * C
 
-        self.R = np.array([[A, B],
-                           [C, D]])
-
-
-    def __matmul__(self, ray):
-        if hasattr(ray, 'z'):
-            ray.z += self.t
-        ray.rt = self.R @ ray.rt
+        super().__init__(A=A, B=B, C=C, D=D)
 
 
 class OpticsSystem(list):
@@ -233,7 +233,7 @@ class OpticsSystem(list):
 
         #Add a distance element to the system between defined elements using the difference in z positions
         for i, (prev_element, next_element) in enumerate(zip(self[:-1],self[1:])):
-            dz = next_element.z - prev_element.z
+            dz = next_element.z - (prev_element.z + prev_element.B)
             dist = Distance(dz)
 
             self.insert(1 + 2*i, dist) #Inserts distances between elements
@@ -241,7 +241,7 @@ class OpticsSystem(list):
 
         self.SYS = self[0].SYS
         for element in self[1:]:
-            self.SYS = self.SYS @ element.SYS
+            self.SYS = element.SYS @ self.SYS
 
 
     def __repr__(self):
@@ -265,7 +265,6 @@ class OpticsSystem(list):
             for ray in rays:
                 self.calcPath(ray)
         else: self.calcPath(rays)
-
 
     def Reverse(self, propagate = None):
         if propagate is None: propagate = -self[-1].dz
