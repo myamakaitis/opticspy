@@ -3,9 +3,6 @@ import matplotlib.pyplot as pyp
 from matplotlib import cm
 from functools import lru_cache
 
-def ABCDunpack(Mat):
-    return Mat[0,0], Mat[0,1], Mat[1,0], Mat[1,1]
-
 
 def rgb2hex(rgb):
     """
@@ -23,6 +20,7 @@ def rgb2hex(rgb):
 
     return f"#{int(rgb[0]):02x}{int(rgb[1]):02x}{int(rgb[2]):02x}"
 
+
 def hex2rgb(hex_str):
     """
     Converts a hex number string representing color into rgb values
@@ -37,22 +35,11 @@ def hex2rgb(hex_str):
 
     return np.array([r, g, b], dtype = np.uint8)
 
-def getCmap(color, MPL_grades = 11):
-    if callable(color):
-        cmap = color # if a function is passed, its assumed that its already a colormap that returns a hex string
-    elif color[0] == '#':
-        cmap = lambda x: color #make a function that just returns the color
-    else:
-        mpl_cmap = cm.get_cmap(color, MPL_grades) # grab the callable matplotlib colormap
-        cmap = lambda x: rgb2hex(mpl_cmap(x)[:-1])  # make the colormap drop the alpha component
-
-    return cmap
-
 
 class Ray:
     def __init__(self, theta, r, n_current = 1, color = '#FFFFFF'):
-        #self.t = theta
-        #self.r = r
+        # self.t = theta
+        # self.r = r
         self.n = n_current
         self.stopped = False  # has to be done before self.rt
 
@@ -62,18 +49,21 @@ class Ray:
 
         self.color = color
 
-
     def get_rgb(self):
         return hex2rgb(self.color)
 
 
 class Path(Ray):
+    """keeps a record of past states everytime rt is changed"""
     def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#000000'):
-        self.Pstates = [] #These lists must be created before the other init since it sets rt and set rt has calls to these
+        # These lists must be created before the other init since it sets rt and set rt has calls to these
+        self.Pstates = []
         self.tstates = []
         self.z = z
         super().__init__(theta, r, n_current=n_current, color=color)
 
+    def __repr__(self):
+        return f"Path - Current state: r = {self.rt[0]:.3f}, theta =  {self.rt[1]:.3f}, z = {self.z:.3f}"
 
     @property
     def rt(self):
@@ -96,7 +86,6 @@ class Path(Ray):
 
         ax.plot(z, r, color = self.color, **kwargs)
 
-    """same as ray, but it keeps a record of all changes everytime rt is changed"""
 
 class ABCD:
     def __init__(self, A=1, B=0, C=0, D=1, loc=0.0):
@@ -106,17 +95,21 @@ class ABCD:
         self.z = loc
 
         self.SYS = np.array([[A, B],
-                             [C, D]])
+                             [C, D]],
+                            dtype = np.float64)
 
     def __matmul__(self, ray):
         if hasattr(ray, 'z'):
             ray.z += self.B
         ray.rt = self.SYS @ ray.rt
 
+    def __repr__(self):
+        return f"ABCD Optical Element: [{self.A}, {self.B}];[{self.C}, {self.D}]"
+
     @lru_cache
     def Reverse(self):
         MatInv = np.linalg.inv(self.SYS)
-        Ainv, Binv, Cinv, Dinv = ABCDunpack(MatInv)
+        Ainv, Binv, Cinv, Dinv = MatInv.ravel()
         RevSys = ABCD(Ainv,Binv,Cinv,Dinv,loc=self.z+self.B)
         return RevSys
 
@@ -171,7 +164,6 @@ class ThinLensMLA(ThinLens):
         # self.d = diameter
         # self.z = loc
 
-
     def __matmul__(self, ray):
         r, t = ray.rt
 
@@ -216,7 +208,6 @@ class ThickLens:
         self.R = np.array([[A, B],
                            [C, D]])
 
-
     def __matmul__(self, ray):
         if hasattr(ray, 'z'):
             ray.z += self.t
@@ -231,18 +222,17 @@ class OpticsSystem(list):
     def __init__(self, element_list, propagate = 0):
         super().__init__(element_list)
 
-        #Add a distance element to the system between defined elements using the difference in z positions
+        # Add a distance element to the system between defined elements using the difference in z positions
         for i, (prev_element, next_element) in enumerate(zip(self[:-1],self[1:])):
             dz = next_element.z - prev_element.z
             dist = Distance(dz)
 
-            self.insert(1 + 2*i, dist) #Inserts distances between elements
+            self.insert(1 + 2*i, dist) # Inserts distances between elements
         self.append(Distance(propagate))
 
         self.SYS = self[0].SYS
         for element in self[1:]:
             self.SYS = self.SYS @ element.SYS
-
 
     def __repr__(self):
         rep = ''
@@ -251,7 +241,6 @@ class OpticsSystem(list):
 
         return rep
 
-
     def calcPath(self, ray, first_element = 0):
         dobj = Distance(self[0].z - ray.z)
         dobj @ ray
@@ -259,23 +248,21 @@ class OpticsSystem(list):
         for element in self:
             element @ ray
 
-
     def __matmul__(self, rays):
         if hasattr(rays, '__iter__'):
             for ray in rays:
                 self.calcPath(ray)
         else: self.calcPath(rays)
 
-
     def Reverse(self, propagate = None):
         if propagate is None: propagate = -self[-1].dz
 
-        ReversedOrder = self[-2::-2] # reverse the list and drop the distance matrices
-        Reverse = [element.Reverse() for element in ReversedOrder]
+        reversed_order = self[-2::-2] # reverse the list and drop the distance matrices
+        reverse = [element.Reverse() for element in reversed_order]
 
-        OpticsSystemRev = OpticsSystem(Reverse, propagate=propagate) #create a new optics system using the original element list reversed
+        optics_system_rev = OpticsSystem(reverse, propagate=propagate) #create a new optics system using the original element list reversed
 
-        return OpticsSystemRev # return the reversed system
+        return optics_system_rev # return the reversed system
 
     def plot(self, ax):
         ylims = ax.get_ylim()
@@ -284,18 +271,32 @@ class OpticsSystem(list):
 
 
 class Bundle:
-    def __init__(self, num, color):
 
+    @staticmethod
+    def getCmap(color, MPL_grades=11):
+        if callable(color):
+            cmap = color  # if a function is passed assume it's already a colormap that returns a hex string
+        elif color[0] == '#':
+            def cmap(_):
+                return color                      # make a function that takes an argument but always returns the color
+        else:
+            mpl_cmap = cm.get_cmap(color, MPL_grades)
+
+            def cmap(x):                          # grab the callable matplotlib colormap
+                return rgb2hex(mpl_cmap(x)[:-1])  # make the colormap drop the alpha component
+
+        return cmap
+
+    def __init__(self, num, color):
         self.bundle = []
         self.num = num
-        self.cmap = getCmap(color)
+        self.cmap = self.getCmap(color)
 
     def __len__(self):
         return self.num
 
     def __getitem__(self, item):
         return self.bundle[item]
-
 
     def __iter__(self):
         self.ii = 0
@@ -308,6 +309,9 @@ class Bundle:
             return ray
         else:
             raise StopIteration
+
+    def __repr__(self):
+        return type(self).__name__
 
     def plot(self, ax, kwargs = {}):
         for ray in self.bundle:
@@ -383,7 +387,7 @@ class Image:
         """Creates an image using a sample of rays using their color and """
         if ray.stopped:
             return
-        #for better results could blur each ray using a kernel
+        # for better results could blur each ray using a kernel
         r = ray.rt[0]
         pos_frac = r / self.r_max
 
@@ -397,17 +401,14 @@ class Image:
 
         idx_frac = img_idx - img_idx_l
 
-
-        self.img[img_idx_u] += ray.get_rgb() * (idx_frac) * self.intensity
+        self.img[img_idx_u] += ray.get_rgb() * idx_frac * self.intensity
         self.img[img_idx_l] += ray.get_rgb() * (1 - idx_frac) * self.intensity
-
 
     def __add__(self, ray):
         if hasattr(ray, '__getitem__'):
             for ii in range(len(ray)):
                 self.Add(ray[ii])
         else: self.Add(ray)
-
 
     def cap(self, max = 255):
         over = self.img > max
@@ -427,6 +428,7 @@ class Image:
         if show:
             fig.show()
 
+
 if __name__ == '__main__':
 
     Obj = ThinLens(100, loc = 0)
@@ -436,9 +438,6 @@ if __name__ == '__main__':
 
     ColLight = CollimatedSource(.5)
     PointLight = PointSource(-100, 0, .005, num = 501, color = 'autumn')
-
-
-
 
     FLFM = OpticsSystem([Obj, Lens1, Lens2, MLA], propagate = 50)
 
