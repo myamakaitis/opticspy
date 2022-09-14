@@ -52,7 +52,6 @@ class Ray:
     def get_rgb(self):
         return hex2rgb(self.color)
 
-
 class Path(Ray):
     """keeps a record of past states everytime rt is changed"""
     def __init__(self, theta, r, z = -np.inf, n_current = 1, color = '#000000'):
@@ -114,10 +113,13 @@ class ABCD:
         return RevSys
 
     def plot(self, ax, ylims):
+        if hasattr(self, 'd'):
+            min, max = -self.d/2, self.d/2
+        else:
+            min, max = ylims[0], ylims[1]
 
         if self.B == 0:
-            ax.vlines(self.z, ylims[0], ylims[1], color = 'k')
-
+            ax.vlines(self.z, min, max, color = 'purple', zorder = -10)
 
 class Distance(ABCD):
     def __init__(self, dist, start=0):
@@ -193,10 +195,17 @@ class Stop(ABCD):
         else:
             pass
 
+    def plot(self, ax, ylims):
 
-class ThickLens:
+        if self.B == 0:
+            ax.vlines(self.z, ylims[0], self.r_min, color = 'k')
+            ax.vlines(self.z, self.r_max, ylims[1], color = 'k')
+
+
+class ThickLens(ABCD):
     def __init__(self, WD, f, thickness, loc = 0, diameter = np.inf):
         self.z  = loc
+        self.d = diameter
         self.t = thickness
 
         B = thickness
@@ -204,14 +213,8 @@ class ThickLens:
 
         A = -f * C
         D = -WD * C
+        super().__init__(A=A, B=B, C=C, D=D)
 
-        self.R = np.array([[A, B],
-                           [C, D]])
-
-    def __matmul__(self, ray):
-        if hasattr(ray, 'z'):
-            ray.z += self.t
-        ray.rt = self.R @ ray.rt
 
 
 class OpticsSystem(list):
@@ -224,7 +227,7 @@ class OpticsSystem(list):
 
         # Add a distance element to the system between defined elements using the difference in z positions
         for i, (prev_element, next_element) in enumerate(zip(self[:-1],self[1:])):
-            dz = next_element.z - prev_element.z
+            dz = next_element.z - (prev_element.z + prev_element.B)
             dist = Distance(dz)
 
             self.insert(1 + 2*i, dist) # Inserts distances between elements
@@ -232,7 +235,7 @@ class OpticsSystem(list):
 
         self.SYS = self[0].SYS
         for element in self[1:]:
-            self.SYS = self.SYS @ element.SYS
+            self.SYS = element.SYS @ self.SYS
 
     def __repr__(self):
         rep = ''
