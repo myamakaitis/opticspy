@@ -7,7 +7,7 @@ class Image:
 
     def Add(self, ray):
         """Creates an image using a sample of rays using their color and """
-        if ray.stopped:
+        if ray.halt:
             return
         # for better results could blur each ray using a kernel
         r = ray.rt[0]

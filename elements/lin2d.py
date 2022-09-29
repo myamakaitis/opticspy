@@ -1,4 +1,8 @@
-from colors import rgb2hex, hex2rgb
+from ..colors import rgb2hex, hex2rgb
+from ..rays.rays2d import Path
+from functools import lru_cache
+from matplotlib.pyplot import get_cmap
+import numpy as np
 
 class ABCD:
     def __init__(self, A=1, B=0, C=0, D=1, loc=0.0):
@@ -58,15 +62,13 @@ class ThinLens(ABCD):
         self.z = loc
 
 
-class Slab:
-    def __init__(self, n, thickness, diameter = np.inf, loc = None):
+class Slab(ABCD):
+    def __init__(self, n, thickness, loc = None):
+
         self.n = n
         self.t = thickness
-        self.R = np.array([[1, self.t / n],
-                           [0, 1]],
-                          dtype = np.float64)
-        self.d = diameter
-        self.z = loc
+
+        super().__init__(B = self.t / self.n, loc = loc)
 
 
 class ThinLensMLA(ThinLens):
@@ -105,7 +107,7 @@ class Stop(ABCD):
     def __matmul__(self, ray):
         r = ray.rt[0]
         if r > self.r_max or r < self.r_min:
-            ray.stopped = True
+            ray.halt = True
         else:
             pass
 
@@ -197,7 +199,7 @@ class Bundle:
             def cmap(_):
                 return color                      # make a function that takes an argument but always returns the color
         else:
-            mpl_cmap = cm.get_cmap(color, MPL_grades)
+            mpl_cmap = get_cmap(color, MPL_grades)
 
             def cmap(x):                          # grab the callable matplotlib colormap
                 return rgb2hex(mpl_cmap(x)[:-1])  # make the colormap drop the alpha component

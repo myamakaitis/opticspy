@@ -1,10 +1,13 @@
+import numpy as np
+from ..colors import rgb2hex, hex2rgb
+
 class Ray:
 
     def __init__(self, theta, r, n_current = 1, color = '#FFFFFF'):
         # self.t = theta
         # self.r = r
         self.n = n_current
-        self.stopped = False  # has to be done before self.rt
+        self.halt = False  # has to be done before self.rt
 
         self.rt = np.array([r, theta])
         # self.dx, self.dy = np.cos(theta), np.sin(theta)
@@ -34,7 +37,7 @@ class Path(Ray):
 
     @rt.setter
     def rt(self, value):
-        if self.stopped:
+        if self.halt:
             return
 
         self._rt = value
